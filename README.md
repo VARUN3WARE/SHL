@@ -46,4 +46,11 @@ To generate it, run:
 python scripts/scrape_shl_catalog.py
 ```
 
+If the scrape contains invalid JSON control characters, normalize offline (same repair as runtime):
+
+```bash
+python scripts/normalize_catalog.py --in data/shl_product_catalog.json --out data/shl_product_catalog.normalized.json
+export SHL_CATALOG_PATH="$PWD/data/shl_product_catalog.normalized.json"
+```
+
 Then restart the server.

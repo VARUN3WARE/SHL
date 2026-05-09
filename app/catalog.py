@@ -106,60 +106,57 @@ def _load_first_existing(paths: list[Path]) -> Path | None:
     return None
 
 
+def sanitize_catalog_json_text(s: str) -> str:
+    """
+    Repair scraped catalog files so json.loads succeeds: escape/remove illegal control
+    characters inside JSON strings (shared by runtime load and offline normalize script).
+    """
+    out: list[str] = []
+    in_str = False
+    escape = False
+    for ch in s:
+        if in_str:
+            if escape:
+                out.append(ch)
+                escape = False
+                continue
+            if ch == "\\":
+                out.append(ch)
+                escape = True
+                continue
+            if ch == '"':
+                out.append(ch)
+                in_str = False
+                continue
+            if unicodedata.category(ch) == "Cc":
+                if ch == "\n":
+                    out.append("\\n")
+                elif ch == "\r":
+                    out.append("\\r")
+                elif ch == "\t":
+                    out.append("\\t")
+                else:
+                    continue
+            else:
+                out.append(ch)
+        else:
+            if ch == '"':
+                out.append(ch)
+                in_str = True
+                continue
+            if unicodedata.category(ch) == "Cc" and ch not in "\n\r\t":
+                continue
+            out.append(ch)
+    return "".join(out)
+
+
 def load_catalog(path: Path | None = None) -> Catalog:
     path = path or _load_first_existing(catalog_path_candidates())
     if path is None or not path.exists():
         return Catalog([])
 
     text = path.read_text(encoding="utf-8", errors="replace")
-
-    # Some scraped exports contain invalid JSON due to raw newlines/control characters inside strings.
-    # We sanitize by:
-    # - removing non-whitespace control chars outside of strings
-    # - converting control chars *inside* strings into escaped sequences
-    def _sanitize_json(s: str) -> str:
-        out: list[str] = []
-        in_str = False
-        escape = False
-        for ch in s:
-            if in_str:
-                if escape:
-                    out.append(ch)
-                    escape = False
-                    continue
-                if ch == "\\":
-                    out.append(ch)
-                    escape = True
-                    continue
-                if ch == '"':
-                    out.append(ch)
-                    in_str = False
-                    continue
-                # Any control char inside a JSON string is invalid unless escaped.
-                if unicodedata.category(ch) == "Cc":
-                    if ch == "\n":
-                        out.append("\\n")
-                    elif ch == "\r":
-                        out.append("\\r")
-                    elif ch == "\t":
-                        out.append("\\t")
-                    else:
-                        # drop other controls rather than failing
-                        continue
-                else:
-                    out.append(ch)
-            else:
-                if ch == '"':
-                    out.append(ch)
-                    in_str = True
-                    continue
-                # Outside strings: allow standard whitespace; drop other control chars.
-                if unicodedata.category(ch) == "Cc" and ch not in "\n\r\t":
-                    continue
-                out.append(ch)
-        return "".join(out)
-
-    raw = json.loads(_sanitize_json(text))
+    raw = json.loads(sanitize_catalog_json_text(text))
     if not isinstance(raw, list):
         raise ValueError(f"{path.name} must be a JSON array")
 
