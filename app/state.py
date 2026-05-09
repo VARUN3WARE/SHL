@@ -14,15 +14,16 @@ _COMPARE_RE = re.compile(
 
 # User appears to close the task (used with prior substantive assistant turn).
 _CLOSURE_RE = re.compile(
-    r"(?i)^(thanks|thank you)\b"
-    r"|(?i)\bthat'?s perfect\b"
-    r"|(?i)\bperfect,?\s+that'?s what we need\b"
-    r"|(?i)\bthat covers it\b"
-    r"|(?i)\bthat works\b"
-    r"|(?i)\ball set\b"
-    r"|(?i)\bwe'?re good\b"
-    r"|(?i)\bconfirmed\.?\b"
-    r"|(?i)\bwe'?re done\b"
+    r"^(thanks|thank you)\b"
+    r"|\bthat'?s perfect\b"
+    r"|\bperfect,?\s+that'?s what we need\b"
+    r"|\bthat covers it\b"
+    r"|\bthat works\b"
+    r"|\ball set\b"
+    r"|\bwe'?re good\b"
+    r"|\bconfirmed\.?\b"
+    r"|\bwe'?re done\b",
+    re.IGNORECASE,
 )
 
 
