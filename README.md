@@ -54,3 +54,10 @@ export SHL_CATALOG_PATH="$PWD/data/shl_product_catalog.normalized.json"
 ```
 
 Then restart the server.
+
+## Tests
+
+```bash
+pip install -r requirements.txt
+python -m pytest tests/ -q
+```
