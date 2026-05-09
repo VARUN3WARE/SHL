@@ -30,8 +30,15 @@ curl -s localhost:8000/chat \
 
 This service **never scrapes at runtime**. It loads a local catalog JSON file:
 
-- preferred: `data/shl_product_catalog.json`
-- fallback: `data/catalog.json`
+- optional override: set **`SHL_CATALOG_PATH`** to an absolute path to one JSON file (used exclusively when set)
+- otherwise: `data/shl_product_catalog.json`, then `data/catalog.json`
+
+Example:
+
+```bash
+export SHL_CATALOG_PATH=/path/to/shl_product_catalog.json
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
 
 To generate it, run:
 

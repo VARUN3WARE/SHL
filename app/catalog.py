@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import unicodedata
 from pathlib import Path
@@ -14,6 +15,17 @@ DEFAULT_CATALOG_PATHS = [
     DATA_DIR / "shl_product_catalog.json",
     DATA_DIR / "catalog.json",
 ]
+
+
+def catalog_path_candidates() -> list[Path]:
+    """
+    If SHL_CATALOG_PATH is set, use only that file (single source of truth for deploys).
+    Otherwise try default locations under data/.
+    """
+    override = os.environ.get("SHL_CATALOG_PATH", "").strip()
+    if override:
+        return [Path(override).expanduser().resolve()]
+    return list(DEFAULT_CATALOG_PATHS)
 
 
 class Catalog:
@@ -95,7 +107,7 @@ def _load_first_existing(paths: list[Path]) -> Path | None:
 
 
 def load_catalog(path: Path | None = None) -> Catalog:
-    path = path or _load_first_existing(DEFAULT_CATALOG_PATHS)
+    path = path or _load_first_existing(catalog_path_candidates())
     if path is None or not path.exists():
         return Catalog([])
 
