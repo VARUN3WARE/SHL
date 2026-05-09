@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from app.catalog import Catalog
-from app.models import CatalogItem, ChatResponse, Intent, NeedState, RecommendationItem
+from app.models import CatalogItem, ChatResponse, Intent, NeedState
+from app.recommendation_guard import (
+    MAX_RECOMMENDATIONS,
+    bind_recommendations_to_catalog,
+    catalog_rows_to_recommendations,
+)
 from app.retrieval import find_by_name_fuzzy, rank
-
-
-def _rec_item(i: CatalogItem) -> RecommendationItem:
-    return RecommendationItem(name=i.name, url=i.url, test_type=i.test_type)
 
 
 def respond(catalog: Catalog, state: NeedState) -> ChatResponse:
@@ -75,9 +76,21 @@ def respond(catalog: Catalog, state: NeedState) -> ChatResponse:
             q = "Should I focus only on job skills/knowledge, or also include cognitive ability and/or personality fit?"
         return ChatResponse(reply=q, recommendations=[], end_of_conversation=False)
 
-    # recommend/refine
-    ranked = rank(catalog, state, top_k=10)
-    recs = [_rec_item(s.item) for s in ranked][:10]
+    # recommend/refine — only catalog-backed rows; 1..MAX when committing
+    ranked = rank(catalog, state, top_k=MAX_RECOMMENDATIONS)
+    rows = [s.item for s in ranked]
+    recs = catalog_rows_to_recommendations(rows)
+    recs = bind_recommendations_to_catalog(catalog, recs)
+
+    if not recs:
+        return ChatResponse(
+            reply=(
+                "I couldn’t build a confident shortlist from the SHL catalog for that request yet. "
+                "Share the role, key skills to measure, and any constraints (duration, remote, language)."
+            ),
+            recommendations=[],
+            end_of_conversation=False,
+        )
 
     need_bits: list[str] = []
     if state.role_title:
