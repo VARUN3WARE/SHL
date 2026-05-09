@@ -6,6 +6,12 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field, HttpUrl
 
 
+class HealthResponse(BaseModel):
+    """Contract for GET /health."""
+
+    status: Literal["ok"] = "ok"
+
+
 class Role(str, Enum):
     user = "user"
     assistant = "assistant"
