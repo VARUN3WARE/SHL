@@ -76,6 +76,10 @@ class NeedState(BaseModel):
 
     comparison_targets: list[str] = Field(default_factory=list)
 
+    # Conversation closure (for end_of_conversation); set in build_state from message history.
+    user_signaled_done: bool = False
+    prior_assistant_substantive: bool = False
+
     debug: dict[str, Any] = Field(default_factory=dict)
 
 

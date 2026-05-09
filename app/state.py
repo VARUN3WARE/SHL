@@ -12,6 +12,49 @@ _COMPARE_RE = re.compile(
     r"\b(compare|difference between|vs\.?|versus)\b", re.IGNORECASE
 )
 
+# User appears to close the task (used with prior substantive assistant turn).
+_CLOSURE_RE = re.compile(
+    r"(?i)^(thanks|thank you)\b"
+    r"|(?i)\bthat'?s perfect\b"
+    r"|(?i)\bperfect,?\s+that'?s what we need\b"
+    r"|(?i)\bthat covers it\b"
+    r"|(?i)\bthat works\b"
+    r"|(?i)\ball set\b"
+    r"|(?i)\bwe'?re good\b"
+    r"|(?i)\bconfirmed\.?\b"
+    r"|(?i)\bwe'?re done\b"
+)
+
+
+def user_signals_conversation_done(latest_user_text: str) -> bool:
+    t = latest_user_text.strip()
+    return bool(t and _CLOSURE_RE.search(t))
+
+
+def prior_assistant_was_substantive(prior_assistant_text: str) -> bool:
+    """
+    True if the last assistant turn likely delivered value (recommendations, comparison, etc.).
+    Client history often stores only `reply` text, not structured URLs — match our phrasing too.
+    """
+    p = prior_assistant_text.strip().lower()
+    if not p:
+        return False
+    if "shl.com" in p:
+        return True
+    if any(
+        k in p
+        for k in (
+            "shortlist",
+            "here are",
+            "recommendation",
+            "assessments from the catalog",
+            "catalog-based comparison",
+            "catalog match",
+        )
+    ):
+        return True
+    return False
+
 
 def _last_user(messages: list[ChatMessage]) -> str:
     for m in reversed(messages):
@@ -177,16 +220,29 @@ def build_state(messages: list[ChatMessage]) -> NeedState:
     latest_user = _last_user(messages)
     full_user = _combine(messages, "user")
     prior_assistant = _combine(messages, "assistant")
+    done_signal = user_signals_conversation_done(latest_user)
+    prior_ok = prior_assistant_was_substantive(prior_assistant)
 
     safety = classify_safety(latest_user)
     if safety.refuse:
-        st = NeedState(intent=Intent.refuse, raw_text=latest_user)
+        st = NeedState(
+            intent=Intent.refuse,
+            raw_text=latest_user,
+            user_signaled_done=done_signal,
+            prior_assistant_substantive=prior_ok,
+        )
         st.debug["safety"] = safety.model_dump()
         return st
 
     comparison_targets = detect_comparison_targets(latest_user)
     if comparison_targets:
-        st = NeedState(intent=Intent.compare, raw_text=full_user, comparison_targets=comparison_targets)
+        st = NeedState(
+            intent=Intent.compare,
+            raw_text=full_user,
+            comparison_targets=comparison_targets,
+            user_signaled_done=done_signal,
+            prior_assistant_substantive=prior_ok,
+        )
         st.debug["comparison_targets"] = comparison_targets
         return st
 
@@ -198,6 +254,8 @@ def build_state(messages: list[ChatMessage]) -> NeedState:
     else:
         extracted.intent = Intent.clarify
 
+    extracted.user_signaled_done = done_signal
+    extracted.prior_assistant_substantive = prior_ok
     extracted.debug["latest_user"] = latest_user
     return extracted
 
