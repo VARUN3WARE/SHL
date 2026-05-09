@@ -6,6 +6,7 @@ from app.recommendation_guard import (
     MAX_RECOMMENDATIONS,
     bind_recommendations_to_catalog,
     catalog_rows_to_recommendations,
+    diversify_ranked_items,
 )
 from app.retrieval import find_by_name_fuzzy, rank
 
@@ -101,8 +102,8 @@ def respond(catalog: Catalog, state: NeedState) -> ChatResponse:
         out = ChatResponse(reply=q, recommendations=[], end_of_conversation=False)
         return out.model_copy(update={"end_of_conversation": _should_end_conversation(state, out)})
 
-    ranked = rank(catalog, state, top_k=MAX_RECOMMENDATIONS)
-    rows = [s.item for s in ranked]
+    ranked = rank(catalog, state, top_k=40)
+    rows = diversify_ranked_items([s.item for s in ranked])
     recs = catalog_rows_to_recommendations(rows)
     recs = bind_recommendations_to_catalog(catalog, recs)
 

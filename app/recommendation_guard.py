@@ -6,6 +6,49 @@ from app.models import CatalogItem, RecommendationItem
 MAX_RECOMMENDATIONS = 10
 
 
+def diversify_ranked_items(
+    ranked: list[CatalogItem],
+    *,
+    family_keyword: str = "opq",
+    max_per_family: int = 4,
+    max_total: int = MAX_RECOMMENDATIONS,
+) -> list[CatalogItem]:
+    """
+    Cap how many recommendations share the same name family (e.g. OPQ reports)
+    so Recall@10-style lists are not ten near-duplicates; backfill from the rest of the ranking.
+    """
+    kw = family_keyword.lower()
+    out: list[CatalogItem] = []
+    seen: set[str] = set()
+    family_hits = 0
+
+    for it in ranked:
+        if len(out) >= max_total:
+            break
+        u = str(it.url)
+        if u in seen:
+            continue
+        is_family = kw in it.name.lower()
+        if is_family and family_hits >= max_per_family:
+            continue
+        if is_family:
+            family_hits += 1
+        seen.add(u)
+        out.append(it)
+
+    if len(out) < max_total:
+        for it in ranked:
+            if len(out) >= max_total:
+                break
+            u = str(it.url)
+            if u in seen:
+                continue
+            seen.add(u)
+            out.append(it)
+
+    return out[:max_total]
+
+
 def catalog_rows_to_recommendations(items: list[CatalogItem]) -> list[RecommendationItem]:
     """Build recommendation DTOs only from canonical catalog rows (max 10)."""
     out: list[RecommendationItem] = []
