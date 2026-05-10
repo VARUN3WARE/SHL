@@ -57,6 +57,8 @@ Then restart the server.
 
 ## Docker
 
+The image installs **`requirements-prod.txt`** (no pytest). For local development and CI, use **`requirements.txt`**.
+
 Build and run locally (catalog must exist under `data/` at build time, or mount a file and set `SHL_CATALOG_PATH`):
 
 ```bash
