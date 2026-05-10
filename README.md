@@ -55,6 +55,20 @@ export SHL_CATALOG_PATH="$PWD/data/shl_product_catalog.normalized.json"
 
 Then restart the server.
 
+## Docker
+
+Build and run locally (catalog must exist under `data/` at build time, or mount a file and set `SHL_CATALOG_PATH`):
+
+```bash
+docker build -t shl-recommender .
+docker run --rm -p 8000:8000 \
+  -e SHL_CATALOG_PATH=/app/data/shl_product_catalog.json \
+  -v "$PWD/data/shl_product_catalog.json:/app/data/shl_product_catalog.json:ro" \
+  shl-recommender
+```
+
+Platforms like **Render / Fly.io / Railway** inject **`PORT`**; the image listens on **`${PORT:-8000}`**. Set **`SHL_CATALOG_PATH`** in the dashboard if the catalog is not baked into the image.
+
 ## Tests
 
 ```bash
