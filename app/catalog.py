@@ -85,17 +85,32 @@ def _infer_test_type(keys: list[str]) -> str:
     return "U"  # unknown/other
 
 
-def _is_individual_test_solution(name: str, keys: list[str]) -> bool:
+def _is_individual_test_solution(name: str, keys: list[str], description: str | None) -> bool:
     """
-    Practical filter to exclude pre-packaged job solutions.
-    In the scraped catalog, those typically appear as *Solution* items with multiple 'keys'.
+    Assignment scope: Individual Test Solutions; Pre-packaged Job Solutions out of scope.
+
+    The public JSON scrape may not include an explicit facet id — use conservative heuristics:
+    - drop multi-key rows (typical job bundles in this dataset)
+    - drop obvious pre-packaged / Precise Fit job-solution naming patterns
     """
+    n = name.lower()
+    desc = (description or "").lower()
+
     if not keys:
-        return True
+        keys = []
     if len(keys) > 1:
         return False
-    # If it's explicitly a 'Solution' with a single key, keep it; some catalogs contain
-    # single-key solutions that are still individual instruments/reports.
+
+    if "pre-packaged" in desc or "prepackaged" in desc:
+        return False
+    if re.search(r"\bpre[- ]?packaged\b", n):
+        return False
+    if re.search(r"\bjob solutions?\b", n):
+        return False
+    # Many Precise Fit bundles are job-solution packages (often multi-key, but some slip through).
+    if re.search(r"\bprecise fit\b", desc) and re.search(r"\bsolution\b", n):
+        return False
+
     return True
 
 
@@ -175,7 +190,8 @@ def load_catalog(path: Path | None = None) -> Catalog:
 
         if not name or not url:
             continue
-        if not _is_individual_test_solution(name, keys):
+        desc_raw = (obj.get("description") or None)
+        if not _is_individual_test_solution(name, keys, desc_raw):
             continue
 
         test_type = (obj.get("test_type") or "").strip() or _infer_test_type(keys)
@@ -187,7 +203,7 @@ def load_catalog(path: Path | None = None) -> Catalog:
             name=name,
             url=url,
             test_type=test_type,
-            description=(obj.get("description") or None),
+            description=desc_raw,
             job_levels=list(obj.get("job_levels") or []),
             languages=list(obj.get("languages") or []),
             duration_minutes=duration_minutes,

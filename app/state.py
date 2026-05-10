@@ -8,6 +8,12 @@ from app.safety import classify_safety
 from app.utils_text import extract_int_minutes, normalize_space
 
 
+# Evaluator caps the whole conversation at 8 messages (user + assistant). Avoid burning
+# the last turn on a clarification — the harness may not get another user reply.
+ASSIGNMENT_MAX_MESSAGES = 8
+# If history already has this many messages, do not return clarify-only; recommend best-effort.
+TURN_BUDGET_FORCE_RECOMMEND_AT_LEN = ASSIGNMENT_MAX_MESSAGES - 1
+
 _COMPARE_RE = re.compile(
     r"\b(compare|difference between|vs\.?|versus)\b", re.IGNORECASE
 )
@@ -207,6 +213,15 @@ def enough_context(need: NeedState) -> bool:
     return False
 
 
+def apply_evaluator_turn_budget(messages: list[ChatMessage], extracted: NeedState) -> None:
+    """Mutate intent when we are one message away from the 8-message cap."""
+    n = len(messages)
+    extracted.debug["message_count"] = n
+    if n >= TURN_BUDGET_FORCE_RECOMMEND_AT_LEN and extracted.intent == Intent.clarify:
+        extracted.intent = Intent.recommend
+        extracted.debug["turn_budget_forced_recommend"] = True
+
+
 def is_refinement(latest_user: str, prior_assistant_text: str) -> bool:
     t = latest_user.lower()
     if re.search(r"\bactually\b|\binstead\b|\bchange\b|\badd\b|\bremove\b|\bonly\b|\bexclude\b", t):
@@ -254,6 +269,8 @@ def build_state(messages: list[ChatMessage]) -> NeedState:
         extracted.intent = Intent.recommend
     else:
         extracted.intent = Intent.clarify
+
+    apply_evaluator_turn_budget(messages, extracted)
 
     extracted.user_signaled_done = done_signal
     extracted.prior_assistant_substantive = prior_ok

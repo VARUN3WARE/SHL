@@ -131,8 +131,14 @@ def respond(catalog: Catalog, state: NeedState) -> ChatResponse:
     prefix = "Updated shortlist" if state.intent == Intent.refine else "Shortlist"
     summary = ", ".join([b for b in need_bits if b]) or "your role requirements"
 
+    budget_note = ""
+    if state.debug.get("turn_budget_forced_recommend"):
+        budget_note = (
+            "We’re near the conversation message limit, so this is a best-effort shortlist from the catalog. "
+        )
+
     reply = (
-        f"{prefix} for {summary}. "
+        f"{budget_note}{prefix} for {summary}. "
         f"Here are {len(recs)} SHL assessments from the catalog that best match."
     )
 
