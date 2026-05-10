@@ -1,6 +1,6 @@
 # SHL Conversational Assessment Recommender
 
-Implements the take-home assignment described in `docs/`.
+Implements the take-home assignment described in `docs/`. See **`docs/ASSIGNMENT_COMPLIANCE.md`** for a requirement-by-requirement checklist and known gaps.
 
 ## Quickstart
 
@@ -70,6 +70,8 @@ docker run --rm -p 8000:8000 \
 ```
 
 Platforms like **Render / Fly.io / Railway** inject **`PORT`**; the image listens on **`${PORT:-8000}`**. Set **`SHL_CATALOG_PATH`** in the dashboard if the catalog is not baked into the image.
+
+This repo includes **`render.yaml`** as a starting point for [Render Blueprints](https://render.com/docs/blueprint-spec).
 
 ## Tests
 

@@ -1,0 +1,11 @@
+# Blueprint for https://render.com — adjust service name / region as needed.
+services:
+  - type: web
+    name: shl-assessment-recommender
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SHL_CATALOG_PATH
+        value: /app/data/shl_product_catalog.json
