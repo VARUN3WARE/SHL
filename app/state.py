@@ -277,3 +277,22 @@ def build_state(messages: list[ChatMessage]) -> NeedState:
     extracted.debug["latest_user"] = latest_user
     return extracted
 
+
+def refresh_intent_after_hints(state: NeedState, messages: list[ChatMessage]) -> NeedState:
+    """
+    After LLM enriches `NeedState` (e.g. skills), upgrade clarify → recommend/refine if
+    `enough_context` now passes. Keeps refuse/compare/refine/recommend unchanged.
+    """
+    if state.intent != Intent.clarify:
+        return state
+    if not enough_context(state):
+        return state
+    latest_user = _last_user(messages)
+    prior_assistant = _combine(messages, "assistant")
+    new_intent = (
+        Intent.refine
+        if is_refinement(latest_user, prior_assistant)
+        else Intent.recommend
+    )
+    return state.model_copy(update={"intent": new_intent})
+

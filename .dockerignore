@@ -17,4 +17,3 @@ htmlcov
 !.env.example
 docs
 tests
-scripts

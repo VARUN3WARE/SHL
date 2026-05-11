@@ -6,3 +6,7 @@ python-dotenv
 httpx
 beautifulsoup4
 lxml
+numpy
+sentence-transformers
+torch
+google-generativeai

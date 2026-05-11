@@ -18,13 +18,24 @@ Cross-check against the published brief: conversational recommender, **Individua
 | **8-turn cap** (evaluator) | Met | At **≥7 messages** in history, **clarify → recommend** (best-effort) so the last turn can still be a shortlist |
 | **30s** / call budget | Met | Middleware `wait_for` ~29s; still returns valid schema on timeout |
 | Individual Test Solutions only (not Pre-packaged Job Solutions) | Partial | Heuristic: drop multi-`keys` rows; drop **Precise Fit … Solution**-style bundles and **pre-packaged** wording in text/name. Without an explicit `solution_type` in the scrape, this cannot be perfect. |
-| Recall@10 / LLM-grounded extraction | Partial | Deterministic BM25-like overlap + boosts; **no hosted LLM** in this repo (add API key + extractor if you want max recall). |
+| Recall@10 / grounded extraction | Improved | **Local** `sentence-transformers` embeddings over catalog text + **hybrid** fusion with lexical scores ([`app/embeddings.py`](app/embeddings.py), [`app/retrieval.py`](app/retrieval.py)). Optional **Gemini** JSON hints only ([`app/gemini_extract.py`](app/gemini_extract.py)) — no model-chosen URLs; timeouts + fallback to rules-only. |
 | 10 public traces + holdout | Partial | Use `data/sample_conversations` + zip when you have it; add golden tests per trace when labels are available. |
 | Deployed URL + 2-page approach | Your side | `Dockerfile`, `render.yaml`; extend `docs/09_two_page_approach_draft.md` for submission. |
 
 ## Gaps to close for a “max score” attempt
 
-1. Add a **bounded LLM** only for need extraction / query rewrite; keep **recommendation IDs deterministic** from catalog.
-2. Add **embeddings + FAISS** (or similar) on catalog text for Recall@10.
-3. **Tune** against the **10 labeled traces** (expected shortlists) once you have the zip.
-4. **Verify** catalog filter against SHL’s official **Individual Test Solutions** facet if the API exposes a stable field.
+1. **Tune** hybrid weights (`HYBRID_W_SEM` / `HYBRID_W_LEX`) and embedding model against the **10 labeled traces** (expected shortlists) when you have the zip.
+2. **Verify** catalog filter against SHL’s official **Individual Test Solutions** facet if the API exposes a stable field.
+3. **Rotate** any exposed API keys; use `.env` locally only (see [`.env.example`](../.env.example)).
+
+## Env vars (summary)
+
+| Variable | Purpose |
+|----------|---------|
+| `GEMINI_API_KEY` | Optional; enables structured JSON hints |
+| `USE_GEMINI` | `false` to disable calls |
+| `GEMINI_MODEL` / `GEMINI_TIMEOUT_S` | Model id and client timeout |
+| `EMBEDDING_MODEL` / `EMBEDDING_INDEX_PATH` | Sentence-transformers model and `.npz` index path |
+| `HYBRID_W_SEM` / `HYBRID_W_LEX` | Hybrid fusion weights |
+
+Rebuild `data/catalog_embeddings.npz` after catalog changes: `python scripts/build_embedding_index.py`.

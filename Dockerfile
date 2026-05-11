@@ -10,7 +10,11 @@ COPY requirements-prod.txt .
 RUN pip install --no-cache-dir -r requirements-prod.txt
 
 COPY app ./app
+COPY scripts ./scripts
 COPY data ./data
+
+# Precompute embedding index when catalog JSON is present (semantic retrieval at runtime).
+RUN python scripts/build_embedding_index.py || true
 
 EXPOSE 8000
 

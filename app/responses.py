@@ -8,7 +8,7 @@ from app.recommendation_guard import (
     catalog_rows_to_recommendations,
     diversify_ranked_items,
 )
-from app.retrieval import find_by_name_fuzzy, rank
+from app.retrieval import find_by_name_fuzzy, rank_hybrid
 
 
 def _should_end_conversation(state: NeedState, response: ChatResponse) -> bool:
@@ -31,7 +31,12 @@ def _should_end_conversation(state: NeedState, response: ChatResponse) -> bool:
     return False
 
 
-def respond(catalog: Catalog, state: NeedState) -> ChatResponse:
+def respond(
+    catalog: Catalog,
+    state: NeedState,
+    *,
+    semantic_url_scores: dict[str, float] | None = None,
+) -> ChatResponse:
     out: ChatResponse
 
     if state.intent == Intent.refuse:
@@ -102,7 +107,7 @@ def respond(catalog: Catalog, state: NeedState) -> ChatResponse:
         out = ChatResponse(reply=q, recommendations=[], end_of_conversation=False)
         return out.model_copy(update={"end_of_conversation": _should_end_conversation(state, out)})
 
-    ranked = rank(catalog, state, top_k=40)
+    ranked = rank_hybrid(catalog, state, semantic_url_scores, top_k=40)
     rows = diversify_ranked_items([s.item for s in ranked])
     recs = catalog_rows_to_recommendations(rows)
     recs = bind_recommendations_to_catalog(catalog, recs)

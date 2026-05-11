@@ -55,6 +55,21 @@ export SHL_CATALOG_PATH="$PWD/data/shl_product_catalog.normalized.json"
 
 Then restart the server.
 
+## Semantic retrieval (local embeddings)
+
+After installing dependencies, build an index aligned with `load_catalog()` (same row order and filters):
+
+```bash
+python scripts/build_embedding_index.py
+# optional: EMBEDDING_INDEX_PATH=... python scripts/build_embedding_index.py --out /path/catalog_embeddings.npz
+```
+
+At runtime, **recommend** / **refine** use **hybrid** scores (semantic cosine + lexical overlap). See [`app/config.py`](app/config.py) for `HYBRID_W_SEM`, `HYBRID_W_LEX`, and embedding paths.
+
+## Gemini (optional structured hints)
+
+Set `GEMINI_API_KEY` in `.env` (never commit it). The model returns **JSON only** (skills, retrieval phrasing, test-type hints) — **never** catalog URLs. On failure or `USE_GEMINI=false`, the service falls back to rule-based `NeedState` only.
+
 ## Docker
 
 The image installs **`requirements-prod.txt`** (no pytest). For local development and CI, use **`requirements.txt`**.

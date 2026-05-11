@@ -3,14 +3,19 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
+
+load_dotenv()
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.catalog import load_catalog
-from app.models import ChatRequest, ChatResponse, HealthResponse
+from app.embeddings import semantic_top_urls
+from app.gemini_extract import apply_gemini_hints
+from app.models import ChatRequest, ChatResponse, HealthResponse, Intent
 from app.responses import respond
-from app.state import build_state
+from app.state import build_state, refresh_intent_after_hints
 
 logger = logging.getLogger(__name__)
 
@@ -89,5 +94,11 @@ def health() -> HealthResponse:
 def chat(req: ChatRequest) -> ChatResponse:
     catalog = load_catalog()
     state = build_state(req.messages)
-    return respond(catalog, state)
+    state = apply_gemini_hints(state, req.messages)
+    state = refresh_intent_after_hints(state, req.messages)
+    sem: dict[str, float] | None = None
+    if not catalog.is_empty and state.intent in (Intent.recommend, Intent.refine):
+        scores = semantic_top_urls(state.raw_text, k=40)
+        sem = scores or None
+    return respond(catalog, state, semantic_url_scores=sem)
 
