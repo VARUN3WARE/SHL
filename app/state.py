@@ -28,6 +28,8 @@ _CLOSURE_RE = re.compile(
     r"|\ball set\b"
     r"|\bwe'?re good\b"
     r"|\bconfirmed\.?\b"
+    r"|\bfinal list\b"
+    r"|\blocking it in\b"
     r"|\bwe'?re done\b",
     re.IGNORECASE,
 )
@@ -85,12 +87,20 @@ def detect_comparison_targets(latest_user: str) -> list[str]:
     if quoted:
         return [normalize_space(x) for x in quoted][:4]
 
+    m = re.search(
+        r"(?:difference between|compare)\s+(.+?)\s+(?:and|with|to|vs\.?|versus)\s+(.+?)(?:[?.!]|$)",
+        t,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return [normalize_space(m.group(1))[:200], normalize_space(m.group(2))[:200]]
+
     # Split on vs/versus
     parts = re.split(r"\bvs\.?\b|\bversus\b", t, flags=re.IGNORECASE)
     parts = [normalize_space(p) for p in parts if len(normalize_space(p)) >= 2]
     if len(parts) >= 2:
         # take the last chunk of each side to avoid leading 'compare'
-        left = re.sub(r"(?i)\b(compare|difference between)\b", "", parts[0]).strip()
+        left = re.sub(r"(?i)\b(compare|difference between|what is the)\b", "", parts[0]).strip()
         right = parts[1].strip()
         left = normalize_space(left)
         right = normalize_space(right)
@@ -126,10 +136,15 @@ def extract_need(full_user_text: str) -> NeedState:
 
     # desired test type hints
     desired_test_types: list[str] = []
-    if re.search(r"\bpersonality\b|\bbehavior(al)?\b|\bopq\b", lower):
+    if re.search(
+        r"\bpersonality\b|\bbehavior(al)?\b|\bopq\b|\bstakeholder\b|\bcommunication\b|\bcollaboration\b|\bteam fit\b",
+        lower,
+    ):
         desired_test_types.append("P")
     if re.search(r"\bcognitive\b|\bability\b|\bgca\b|\bverify\b", lower):
         desired_test_types.append("A")
+    if re.search(r"\bsituational\b|\bjudg(e)?ment\b|\bscenario(s)?\b", lower):
+        desired_test_types.append("B")
     if re.search(r"\bskills?\b|\bcoding\b|\bjava\b|\bpython\b|\bexcel\b|\btyping\b|\bknowledge\b", lower):
         desired_test_types.append("K")
     if re.search(r"\bsimulation\b|\bin[- ]?basket\b|\bcase\b|\bscenario\b", lower):
@@ -153,6 +168,11 @@ def extract_need(full_user_text: str) -> NeedState:
 
     # skills: extract a small set of salient tokens (non-stopword-ish)
     raw_skills: list[str] = []
+    def has_keyword(kw: str) -> bool:
+        if re.fullmatch(r"[a-z0-9]+", kw):
+            return bool(re.search(rf"\b{re.escape(kw)}\b", lower))
+        return kw in lower
+
     for kw in [
         "java",
         "python",
@@ -163,6 +183,9 @@ def extract_need(full_user_text: str) -> NeedState:
         "excel",
         "sales",
         "customer service",
+        "contact center",
+        "contact centre",
+        "inbound calls",
         "leadership",
         "stakeholder",
         "communication",
@@ -172,8 +195,33 @@ def extract_need(full_user_text: str) -> NeedState:
         "engineering",
         "developer",
         "manager",
+        "rust",
+        "networking",
+        "infrastructure",
+        "linux",
+        "systems",
+        "finance",
+        "financial",
+        "accounting",
+        "statistics",
+        "sales",
+        "reskill",
+        "chemical",
+        "plant operators",
+        "safety",
+        "hipaa",
+        "medical",
+        "healthcare",
+        "admin",
+        "excel",
+        "word",
+        "spring",
+        "rest",
+        "aws",
+        "docker",
+        "graduate",
     ]:
-        if kw in lower:
+        if has_keyword(kw):
             raw_skills.append(kw)
 
     skills = sorted(set([s.title() if len(s) > 3 else s.upper() for s in raw_skills]))[:12]
@@ -207,6 +255,15 @@ def enough_context(need: NeedState) -> bool:
     if need.role_title:
         return True
     if need.seniority in {"director", "executive"} and any(s.lower() in {"leadership", "stakeholder", "communication"} for s in need.skills):
+        return True
+    if need.seniority in {"entry", "junior", "graduate", "intern"} and any(
+        s.lower() in {"customer service", "contact center", "contact centre", "inbound calls"}
+        for s in need.skills
+    ):
+        return True
+    if len(need.desired_test_types) >= 2 and any(
+        s.lower() in {"graduate", "manager", "leadership"} for s in need.skills
+    ):
         return True
     if len(need.skills) >= 2:
         return True

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 
 from app.catalog import Catalog
 from app.config import hybrid_weight_lexical, hybrid_weight_semantic
@@ -13,6 +14,21 @@ class ScoredItem:
     item: CatalogItem
     score: float
     why: list[str]
+
+
+def test_type_codes(test_type: str) -> set[str]:
+    return {p.strip().upper() for p in test_type.replace(",", " ").split() if p.strip()}
+
+
+def is_report_or_guide(item: CatalogItem) -> bool:
+    n = item.name.lower()
+    return bool(
+        "report" in n
+        or "guide" in n
+        or "profile" in n
+        or "profile cards" in n
+        or "development action planner" in n
+    )
 
 
 def _field_text(i: CatalogItem) -> str:
@@ -36,41 +52,108 @@ def lexical_score_item(need: NeedState, it: CatalogItem) -> tuple[float, list[st
     leadership_intent = any(s.lower() == "leadership" for s in (need.skills or [])) or (
         "leadership" in need.raw_text.lower()
     )
-    looks_technical = any(
-        kw in need.raw_text.lower()
-        for kw in [
-            "java",
-            "python",
-            "javascript",
-            "react",
-            "node",
-            "sql",
-            "c++",
-            "developer",
-            "engineer",
-            "coding",
-        ]
-    )
+    technical_terms = [
+        "java",
+        "python",
+        "javascript",
+        "react",
+        "node",
+        "sql",
+        "c++",
+        ".net",
+        "developer",
+        "engineer",
+        "coding",
+    ]
+    present_technical_terms = [kw for kw in technical_terms if kw in need.raw_text.lower()]
+    looks_technical = bool(present_technical_terms)
 
     why: list[str] = []
     text = _field_text(it)
+    text_l = text.lower()
     it_tokens = set(tokenize(text))
 
     overlap = jaccard(q_tokens, it_tokens)
     bow_score = sum(min(q_bow[w], 2) for w in it_tokens) / max(10.0, len(it_tokens))
     score = 2.0 * overlap + 3.0 * bow_score
 
+    if is_report_or_guide(it):
+        score -= 0.65
+        why.append("penalize report/guide artifact for recommendation")
+
+    if looks_technical:
+        matched_terms = [kw for kw in present_technical_terms if kw in text_l]
+        if matched_terms:
+            score += min(0.75, 0.25 * len(matched_terms))
+            why.append("technical term match: " + ", ".join(matched_terms[:3]))
+        elif "K" in test_type_codes(it.test_type) and not any(
+            broad in text_l for broad in ("computer science", "programming", "software", "coding")
+        ):
+            score -= 0.55
+            why.append("penalize unrelated knowledge test for technical role")
+
+    raw_l = need.raw_text.lower()
+    name_l = it.name.lower()
+
+    if "rust" in raw_l:
+        if "smart interview live coding" in name_l:
+            score += 1.3
+            why.append("Rust fallback: live coding can cover Rust")
+        if "linux programming" in name_l:
+            score += 0.9
+            why.append("Rust systems fallback: Linux programming")
+    if "network" in raw_l and "networking" in name_l:
+        score += 1.1
+        why.append("networking match")
+    if any(x in raw_l for x in ("infrastructure", "systems", "high-performance")) and "linux programming" in name_l:
+        score += 0.8
+        why.append("infrastructure/systems match")
+
+    if any(x in raw_l for x in ("cognitive", "ability", "reasoning")):
+        if name_l == "shl verify interactive g+":
+            score += 1.2
+            why.append("preferred cognitive assessment")
+        elif "candidate report" in name_l or name_l.endswith(" report"):
+            score -= 0.5
+
+    if any(x in raw_l for x in ("cxo", "director", "senior leadership", "leadership benchmark", "executive")):
+        if name_l == "occupational personality questionnaire opq32r":
+            score += 1.4
+            why.append("leadership selection instrument")
+        elif "opq leadership report" in name_l:
+            score += 1.1
+            why.append("leadership report fit")
+        elif "opq universal competency report 2.0" in name_l:
+            score += 1.0
+            why.append("leadership competency report fit")
+
+    if any(x in raw_l for x in ("contact centre", "contact center", "inbound calls", "customer service")):
+        if "svar - spoken english (us)" in name_l and any(x in raw_l for x in ("english", "us", "usa")):
+            score += 1.4
+            why.append("US spoken English screen")
+        elif "contact center call simulation" in name_l:
+            score += 1.25
+            why.append("contact center simulation match")
+        elif "entry level customer serv" in name_l:
+            score += 1.0
+            why.append("entry-level customer service fit")
+        elif "customer service phone simulation" in name_l:
+            score += 0.95
+            why.append("customer service phone simulation match")
+
     if preferred_types:
-        if it.test_type.upper() in preferred_types:
+        it_types = test_type_codes(it.test_type)
+        if it_types & preferred_types:
             score += 0.6
             why.append(f"matches test_type={it.test_type}")
         else:
             score -= 0.1
 
     if leadership_intent:
-        if it.test_type.upper() in {"P", "C", "D", "A"}:
+        it_types = test_type_codes(it.test_type)
+        if it_types & {"P", "C", "D", "A"}:
             score += 0.25
-        if not looks_technical and it.test_type.upper() == "K":
+        if not looks_technical and "K" in it_types:
             score -= 0.7
             why.append("penalize technical skill test for leadership intent")
         if "opq" in it.name.lower():
@@ -199,10 +282,30 @@ def find_by_name_fuzzy(catalog: Catalog, name_like: str) -> CatalogItem | None:
     target = name_like.strip().lower()
     if not target:
         return None
+    aliases = {
+        "opq": "occupational personality questionnaire opq32r",
+        "opq32": "occupational personality questionnaire opq32r",
+        "opq32r": "occupational personality questionnaire opq32r",
+        "gsa": "global skills assessment",
+        "dsi": "dependability and safety instrument (dsi)",
+        "safety and dependability 8.0": "manufac. & indust. - safety & dependability 8.0",
+        "global skills": "global skills assessment",
+        "verify g+": "shl verify interactive g+",
+        "verify interactive g+": "shl verify interactive g+",
+        "g+": "shl verify interactive g+",
+    }
+    target = aliases.get(target, target)
     if target in catalog.by_name_lower:
         return catalog.by_name_lower[target]
 
     for it in catalog.items:
         if target in it.name.lower():
             return it
+    best: tuple[float, CatalogItem] | None = None
+    for it in catalog.items:
+        score = SequenceMatcher(a=target, b=it.name.lower()).ratio()
+        if best is None or score > best[0]:
+            best = (score, it)
+    if best and best[0] >= 0.72:
+        return best[1]
     return None

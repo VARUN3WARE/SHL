@@ -62,27 +62,29 @@ def _yn_to_bool(v: Any) -> bool | None:
     return None
 
 
+_KEY_TO_TEST_TYPE = {
+    "ability & aptitude": "A",
+    "biodata & situational judgment": "B",
+    "competencies": "C",
+    "development & 360": "D",
+    "assessment exercises": "E",
+    "knowledge & skills": "K",
+    "personality & behavior": "P",
+    "simulations": "S",
+}
+
+
 def _infer_test_type(keys: list[str]) -> str:
     """
-    Map SHL 'keys' category to a compact test_type string.
-    The API only requires a short string; we keep it stable/deterministic.
+    Map SHL category labels to the assignment's compact test_type code string.
+    Preserve multi-category individual tests such as "C K" for GSA.
     """
-    kset = {k.strip().lower() for k in (keys or []) if k}
-    if "knowledge & skills".lower() in kset:
-        return "K"
-    if "personality & behavior".lower() in kset:
-        return "P"
-    if "ability & aptitude".lower() in kset:
-        return "A"
-    if "simulations".lower() in kset or "assessment exercises".lower() in kset:
-        return "S"
-    if "biodata & situational judgment".lower() in kset:
-        return "SJ"
-    if "competencies".lower() in kset:
-        return "C"
-    if "development & 360".lower() in kset:
-        return "D"
-    return "U"  # unknown/other
+    out: list[str] = []
+    for k in keys or []:
+        code = _KEY_TO_TEST_TYPE.get(k.strip().lower())
+        if code and code not in out:
+            out.append(code)
+    return " ".join(out) if out else "U"  # unknown/other
 
 
 def _is_individual_test_solution(name: str, keys: list[str], description: str | None) -> bool:
@@ -90,7 +92,6 @@ def _is_individual_test_solution(name: str, keys: list[str], description: str | 
     Assignment scope: Individual Test Solutions; Pre-packaged Job Solutions out of scope.
 
     The public JSON scrape may not include an explicit facet id — use conservative heuristics:
-    - drop multi-key rows (typical job bundles in this dataset)
     - drop obvious pre-packaged / Precise Fit job-solution naming patterns
     """
     n = name.lower()
@@ -98,14 +99,14 @@ def _is_individual_test_solution(name: str, keys: list[str], description: str | 
 
     if not keys:
         keys = []
-    if len(keys) > 1:
-        return False
 
     if "pre-packaged" in desc or "prepackaged" in desc:
         return False
     if re.search(r"\bpre[- ]?packaged\b", n):
         return False
     if re.search(r"\bjob solutions?\b", n):
+        return False
+    if re.search(r"\bsolution\b", n):
         return False
     # Many Precise Fit bundles are job-solution packages (often multi-key, but some slip through).
     if re.search(r"\bprecise fit\b", desc) and re.search(r"\bsolution\b", n):
@@ -182,8 +183,10 @@ def load_catalog(path: Path | None = None) -> Catalog:
             continue
 
         # Supports both normalized catalog.json and scraped shl_product_catalog.json
-        name = (obj.get("name") or "").strip()
+        name = re.sub(r"\s+", " ", (obj.get("name") or "")).strip()
         url = (obj.get("url") or obj.get("link") or "").strip()
+        if url.rstrip("/").endswith("/microsoft-excel-365-new") and name.lower() == "microsoft 365 (new)":
+            name = "Microsoft Excel 365 (New)"
         keys = obj.get("keys") or []
         if not isinstance(keys, list):
             keys = []

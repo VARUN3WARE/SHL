@@ -22,8 +22,10 @@ _CHEATING_PATTERNS = [
 
 _LEGAL_PATTERNS = [
     r"\blegal advice\b",
+    r"\blegally required\b",
     r"\blawyer\b",
     r"\bcompliance\b.*\bemployment\b",
+    r"\bhipaa\b.*\brequired\b",
     r"\bis this legal\b",
 ]
 
