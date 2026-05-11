@@ -2,6 +2,15 @@
 
 FastAPI service: **`GET /health`**, **`POST /chat`**. Stateless JSON in/out; loads a **local SHL catalog** (no live scraping on requests).
 
+**Deployed API (Render):** [https://shl-dj0s.onrender.com](https://shl-dj0s.onrender.com)
+
+| | URL |
+|---|-----|
+| Health | [https://shl-dj0s.onrender.com/health](https://shl-dj0s.onrender.com/health) |
+| Chat | `POST` [https://shl-dj0s.onrender.com/chat](https://shl-dj0s.onrender.com/chat) |
+
+Use `export BASE=https://shl-dj0s.onrender.com` in the **Verify with `curl`** section below. If your Render service name or domain changes, update this README.
+
 **Requirements:** Python **3.12** (matches the Docker image). `git` and `curl` for the steps below.
 
 ---
