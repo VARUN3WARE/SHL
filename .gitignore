@@ -92,3 +92,5 @@ checkpoints/
 # Docker / compose overrides (secrets)
 docker-compose.override.yml
 *.local.yml
+
+__pycache__
