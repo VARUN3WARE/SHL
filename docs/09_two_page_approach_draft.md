@@ -1,4 +1,9 @@
-# 09 - Two-Page Approach Draft
+# 09 - Two-Page Approach Draft (superseded)
+
+**Use the submission-ready document: [`APPROACH.md`](../APPROACH.md)** (repository root).  
+The content below is kept as an earlier draft for reference.
+
+---
 
 ## Conversational SHL Assessment Recommender - Approach
 

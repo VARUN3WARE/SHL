@@ -1,6 +1,9 @@
 # SHL Conversational Assessment Recommender
 
-Implements the take-home assignment described in `docs/`. See **`docs/ASSIGNMENT_COMPLIANCE.md`** for a requirement-by-requirement checklist and known gaps.
+Implements the take-home assignment described in `docs/`.
+
+- **[`APPROACH.md`](APPROACH.md)** (repo root) — submission-style approach: objectives, pipeline, grounding, hybrid retrieval, LLM boundaries, deployment, evaluation.
+- **[`docs/ASSIGNMENT_COMPLIANCE.md`](docs/ASSIGNMENT_COMPLIANCE.md)** — requirement-by-requirement checklist and known gaps.
 
 ## Quickstart
 
