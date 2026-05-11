@@ -6,9 +6,19 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeout
 
+import httpx
 from pydantic import BaseModel, Field, field_validator
 
-from app.config import gemini_api_key, gemini_model, gemini_timeout_s, use_gemini
+from app.config import (
+    gemini_api_key,
+    gemini_model,
+    gemini_timeout_s,
+    groq_api_key,
+    groq_model,
+    groq_timeout_s,
+    use_gemini,
+    use_groq,
+)
 from app.models import ChatMessage, Intent, NeedState
 
 logger = logging.getLogger(__name__)
@@ -62,6 +72,79 @@ def _parse_json_object(raw: str) -> dict[str, object] | None:
     return None
 
 
+GROQ_CHAT_COMPLETIONS_URL = "https://api.groq.com/openai/v1/chat/completions"
+
+
+def fetch_groq_hints(messages: list[ChatMessage], rule_state: NeedState) -> GeminiNeedHints | None:
+    """OpenAI-compatible Groq API; JSON-only hints (same schema as Gemini path)."""
+    if not use_groq():
+        return None
+    key = groq_api_key()
+    if not key:
+        return None
+
+    transcript = _format_transcript(messages)
+    prompt = (
+        "You help retrieve SHL assessments. Output ONLY valid JSON matching this shape:\n"
+        '{"retrieval_query": string or null, "skills": string[], "seniority": string or null, '
+        '"desired_test_types": string[], "max_duration_minutes": number or null}\n'
+        "desired_test_types must be zero or more of: P, K, A, S (personality, knowledge/skills, ability, simulation).\n"
+        "Do NOT name SHL products, reports, or URLs. Use only the conversation.\n\n"
+        f"Conversation:\n{transcript}\n\n"
+        f"Rule-based draft (may be incomplete): role={rule_state.role_title!r} "
+        f"seniority={rule_state.seniority!r} skills={rule_state.skills!r}\n"
+    )
+
+    body: dict[str, object] = {
+        "model": groq_model(),
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.2,
+        "response_format": {"type": "json_object"},
+    }
+    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+    try:
+        to = groq_timeout_s()
+        with httpx.Client(timeout=to) as client:
+            r = client.post(GROQ_CHAT_COMPLETIONS_URL, headers=headers, json=body)
+            if r.status_code == 400 and "response_format" in body:
+                body_retry = {k: v for k, v in body.items() if k != "response_format"}
+                r = client.post(GROQ_CHAT_COMPLETIONS_URL, headers=headers, json=body_retry)
+    except Exception:
+        logger.warning("Groq request failed", exc_info=True)
+        return None
+
+    if r.status_code != 200:
+        logger.warning(
+            "Groq HTTP %s: %s",
+            r.status_code,
+            (r.text or "")[:300],
+        )
+        return None
+
+    try:
+        payload = r.json()
+        text = (
+            (payload.get("choices") or [{}])[0]
+            .get("message", {})
+            .get("content", "")
+            or ""
+        ).strip()
+    except Exception:
+        logger.warning("Groq response JSON parse failed")
+        return None
+
+    data = _parse_json_object(text)
+    if not data:
+        logger.warning("Groq returned unparseable JSON")
+        return None
+    try:
+        return GeminiNeedHints.model_validate(data)
+    except Exception:
+        logger.warning("Groq JSON failed validation: %s", text[:200])
+        return None
+
+
 def fetch_gemini_hints(messages: list[ChatMessage], rule_state: NeedState) -> GeminiNeedHints | None:
     if not use_gemini():
         return None
@@ -106,7 +189,15 @@ def fetch_gemini_hints(messages: list[ChatMessage], rule_state: NeedState) -> Ge
     except FuturesTimeout:
         logger.warning("Gemini request timed out after %ss", gemini_timeout_s())
         return None
-    except Exception:
+    except Exception as exc:
+        try:
+            from google.api_core.exceptions import ResourceExhausted
+
+            if isinstance(exc, ResourceExhausted):
+                logger.warning("Gemini quota or rate limit: %s", exc)
+                return None
+        except ImportError:
+            pass
         logger.exception("Gemini request failed")
         return None
 
@@ -127,7 +218,7 @@ def fetch_gemini_hints(messages: list[ChatMessage], rule_state: NeedState) -> Ge
         return None
 
 
-def merge_hints(state: NeedState, hints: GeminiNeedHints) -> NeedState:
+def merge_hints(state: NeedState, hints: GeminiNeedHints, *, provider: str = "gemini") -> NeedState:
     u = state.model_copy(deep=True)
     if hints.retrieval_query and hints.retrieval_query.strip():
         add = hints.retrieval_query.strip()
@@ -148,14 +239,24 @@ def merge_hints(state: NeedState, hints: GeminiNeedHints) -> NeedState:
         if 1 <= hints.max_duration_minutes <= 300:
             u.max_duration_minutes = hints.max_duration_minutes
 
-    u.debug["gemini_hints"] = hints.model_dump()
+    u.debug["llm_hints"] = {"provider": provider, **hints.model_dump()}
     return u
 
 
 def apply_gemini_hints(state: NeedState, messages: list[ChatMessage]) -> NeedState:
+    """Try Groq first (when configured), then Gemini; same JSON schema and merge."""
     if state.intent in (Intent.refuse, Intent.compare):
         return state
-    hints = fetch_gemini_hints(messages, state)
+    hints: GeminiNeedHints | None = None
+    provider = "gemini"
+    if use_groq() and groq_api_key():
+        hints = fetch_groq_hints(messages, state)
+        if hints is not None:
+            provider = "groq"
+    if hints is None and use_gemini() and gemini_api_key():
+        hints = fetch_gemini_hints(messages, state)
+        if hints is not None:
+            provider = "gemini"
     if hints is None:
         return state
-    return merge_hints(state, hints)
+    return merge_hints(state, hints, provider=provider)

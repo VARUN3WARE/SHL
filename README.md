@@ -66,9 +66,14 @@ python scripts/build_embedding_index.py
 
 At runtime, **recommend** / **refine** use **hybrid** scores (semantic cosine + lexical overlap). See [`app/config.py`](app/config.py) for `HYBRID_W_SEM`, `HYBRID_W_LEX`, and embedding paths.
 
-## Gemini (optional structured hints)
+## LLM hints (optional): Groq or Gemini
 
-Set `GEMINI_API_KEY` in `.env` (never commit it). The model returns **JSON only** (skills, retrieval phrasing, test-type hints) — **never** catalog URLs. On failure or `USE_GEMINI=false`, the service falls back to rule-based `NeedState` only.
+Structured **JSON only** (skills, retrieval phrasing, test-type hints) — **never** catalog URLs. On failure or when disabled, the service falls back to rule-based `NeedState` only.
+
+- **Groq** (recommended when Google quota is tight): set `GROQ_API_KEY` in `.env` or Render env. Uses the OpenAI-compatible Chat Completions API (`GROQ_MODEL` default `llama-3.3-70b-versatile`). If `GROQ_API_KEY` is set, **Groq is tried first**; then Gemini if still no hints and Gemini is enabled.
+- **Gemini**: set `GEMINI_API_KEY`; disable with `USE_GEMINI=false`.
+
+Never commit real keys; rotate any key pasted into chat or logs.
 
 ## Docker
 

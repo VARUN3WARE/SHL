@@ -36,6 +36,27 @@ def use_gemini() -> bool:
     return bool(gemini_api_key())
 
 
+def groq_api_key() -> str:
+    return os.environ.get("GROQ_API_KEY", "").strip()
+
+
+def groq_model() -> str:
+    return os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile").strip()
+
+
+def groq_timeout_s() -> float:
+    try:
+        return float(os.environ.get("GROQ_TIMEOUT_S", "8").strip())
+    except ValueError:
+        return 8.0
+
+
+def use_groq() -> bool:
+    if _bool_env("USE_GROQ", True) is False:
+        return False
+    return bool(groq_api_key())
+
+
 def embedding_model_name() -> str:
     return os.environ.get(
         "EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"

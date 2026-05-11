@@ -9,3 +9,6 @@ services:
     envVars:
       - key: SHL_CATALOG_PATH
         value: /app/data/shl_product_catalog.json
+      # Set GROQ_API_KEY in the Render dashboard (secret). Groq is used before Gemini when present.
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile

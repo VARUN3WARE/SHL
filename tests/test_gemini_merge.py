@@ -16,4 +16,5 @@ def test_merge_hints_appends_retrieval_and_merges_skills() -> None:
     assert "Java" in merged.skills
     assert "K" in merged.desired_test_types
     assert "P" in merged.desired_test_types
-    assert "gemini_hints" in merged.debug
+    assert "llm_hints" in merged.debug
+    assert merged.debug["llm_hints"]["provider"] == "gemini"

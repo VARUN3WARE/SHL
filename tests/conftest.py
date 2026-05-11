@@ -6,3 +6,4 @@ import os
 
 os.environ.setdefault("EMBEDDING_INDEX_PATH", "/tmp/shl_test_embeddings_missing.npz")
 os.environ.setdefault("USE_GEMINI", "false")
+os.environ.setdefault("USE_GROQ", "false")
