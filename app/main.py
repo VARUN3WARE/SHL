@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, status
@@ -11,7 +12,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.catalog import load_catalog
-from app.embeddings import semantic_top_urls
+from app.config import chat_processing_timeout_s
+from app.embeddings import semantic_top_urls, warmup_embedding_stack
 from app.gemini_extract import apply_gemini_hints
 from app.models import ChatRequest, ChatResponse, HealthResponse, Intent
 from app.responses import respond
@@ -19,10 +21,26 @@ from app.state import build_state, refresh_intent_after_hints
 
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="SHL Conversational Assessment Recommender")
 
-# Assignment-style SLA: keep /chat under typical evaluator limits (leave margin).
-CHAT_PROCESSING_TIMEOUT_S = 29.0
+def _embedding_warmup_sync() -> None:
+    try:
+        warmup_embedding_stack()
+    except Exception:
+        logger.exception("Embedding warmup failed (non-fatal)")
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Offload CPU-heavy ST load so first /chat stays under CHAT_PROCESSING_TIMEOUT_S on Render.
+    loop = asyncio.get_running_loop()
+    await loop.run_in_executor(None, _embedding_warmup_sync)
+    yield
+
+
+app = FastAPI(
+    title="SHL Conversational Assessment Recommender",
+    lifespan=_lifespan,
+)
 
 
 def _is_chat_path(request: Request) -> bool:
@@ -42,14 +60,11 @@ def _chat_schema_error_response(reply: str) -> JSONResponse:
 @app.middleware("http")
 async def chat_processing_time_limit(request: Request, call_next):
     if request.method == "POST" and _is_chat_path(request):
+        budget = chat_processing_timeout_s()
         try:
-            return await asyncio.wait_for(
-                call_next(request), timeout=CHAT_PROCESSING_TIMEOUT_S
-            )
+            return await asyncio.wait_for(call_next(request), timeout=budget)
         except asyncio.TimeoutError:
-            logger.warning(
-                "POST /chat exceeded %.1fs processing budget", CHAT_PROCESSING_TIMEOUT_S
-            )
+            logger.warning("POST /chat exceeded %.1fs processing budget", budget)
             return _chat_schema_error_response(
                 "The request took too long to process. Try again with fewer messages "
                 "or a shorter conversation history."

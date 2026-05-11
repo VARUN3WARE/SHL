@@ -82,3 +82,15 @@ def hybrid_weight_lexical() -> float:
         return float(os.environ.get("HYBRID_W_LEX", "0.45").strip())
     except ValueError:
         return 0.45
+
+
+def chat_processing_timeout_s() -> float:
+    """
+    Wall-clock budget for POST /chat (middleware). Default 29s matches typical evaluator limits.
+    On small hosts (e.g. Render free), first SentenceTransformer load can exceed that — use
+    startup warmup + optionally raise CHAT_PROCESSING_TIMEOUT_S (e.g. 55) in env.
+    """
+    try:
+        return float(os.environ.get("CHAT_PROCESSING_TIMEOUT_S", "29").strip())
+    except ValueError:
+        return 29.0

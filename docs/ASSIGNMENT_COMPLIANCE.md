@@ -16,7 +16,7 @@ Cross-check against the published brief: conversational recommender, **Individua
 | Compare from catalog data | Met | `Intent.compare` + `find_by_name_fuzzy` + fields only |
 | Refuse off-topic / legal / injection (etc.) | Met | `app/safety.py` |
 | **8-turn cap** (evaluator) | Met | At **≥7 messages** in history, **clarify → recommend** (best-effort) so the last turn can still be a shortlist |
-| **30s** / call budget | Met | Middleware `wait_for` ~29s; still returns valid schema on timeout |
+| **30s** / call budget | Met | Middleware `wait_for` uses `CHAT_PROCESSING_TIMEOUT_S` (default 29s); still returns valid schema on timeout. **Render:** set ~55s if cold CPU needs margin; startup **embedding warmup** reduces first-request latency. |
 | Individual Test Solutions only (not Pre-packaged Job Solutions) | Partial | Heuristic: drop multi-`keys` rows; drop **Precise Fit … Solution**-style bundles and **pre-packaged** wording in text/name. Without an explicit `solution_type` in the scrape, this cannot be perfect. |
 | Recall@10 / grounded extraction | Improved | **Local** `sentence-transformers` embeddings over catalog text + **hybrid** fusion with lexical scores ([`app/embeddings.py`](app/embeddings.py), [`app/retrieval.py`](app/retrieval.py)). Optional **Groq** or **Gemini** JSON hints ([`app/gemini_extract.py`](app/gemini_extract.py)) — Groq first when `GROQ_API_KEY` is set; no model-chosen URLs; timeouts + fallback to rules-only. |
 | 10 public traces + holdout | Partial | Use `data/sample_conversations` + zip when you have it; add golden tests per trace when labels are available. |

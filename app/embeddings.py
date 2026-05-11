@@ -75,6 +75,19 @@ def encode_query_text(text: str) -> np.ndarray | None:
         return None
 
 
+def warmup_embedding_stack() -> None:
+    """
+    Load embedding index + run one tiny encode so the first real /chat does not pay cold-start
+    cost inside the request timeout (important on low-CPU hosts like Render free).
+    """
+    idx = _index_arrays()
+    if idx is None:
+        logger.info("Embedding warmup skipped (no index on disk)")
+        return
+    _ = encode_query_text("warmup")
+    logger.info("Embedding warmup complete")
+
+
 def semantic_top_urls(query_text: str, k: int = 40) -> dict[str, float]:
     """
     Return mapping catalog URL -> cosine similarity [0,1] for top-k items.

@@ -93,6 +93,8 @@ Platforms like **Render / Fly.io / Railway** inject **`PORT`**; the image listen
 
 This repo includes **`render.yaml`** as a starting point for [Render Blueprints](https://render.com/docs/blueprint-spec).
 
+**Render / slow `/chat`:** The first load of **sentence-transformers** + `.npz` index can take tens of seconds on a **512 MB** instance. The app **warms up embeddings at startup** (so `/chat` does not pay that cost alone). If you still see timeout replies, set **`CHAT_PROCESSING_TIMEOUT_S`** (e.g. `55` in `render.yaml`) and/or upgrade instance RAM. Strict evaluators can keep **`29`** locally.
+
 ## Tests
 
 ```bash
