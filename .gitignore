@@ -61,3 +61,34 @@ logs/
 # uv / poetry (if added later)
 # uv.lock  # uncomment if you want lockfile ignored
 .python-version
+
+# FastAPI / ASGI local
+*.db
+*.sqlite3
+
+# Direnv / local shell env
+.envrc
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Temporary / scratch
+*.tmp
+*.temp
+*.bak
+*.orig
+
+# ML & embeddings (regenerate: python scripts/build_embedding_index.py)
+data/catalog_embeddings.npz
+.cache/
+models/
+sentence_transformers_cache/
+
+# PyTorch / Hugging Face (if HF_HOME or cache points under repo)
+hub/
+checkpoints/
+
+# Docker / compose overrides (secrets)
+docker-compose.override.yml
+*.local.yml
