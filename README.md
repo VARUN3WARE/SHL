@@ -1,88 +1,138 @@
 # SHL Conversational Assessment Recommender
 
-Implements the take-home assignment described in `docs/`.
+FastAPI service: **`GET /health`**, **`POST /chat`**. Stateless JSON in/out; loads a **local SHL catalog** (no live scraping on requests).
 
-- **[`APPROACH.md`](APPROACH.md)** (repo root) — submission-style approach: objectives, pipeline, grounding, hybrid retrieval, LLM boundaries, deployment, evaluation.
-- **[`docs/ASSIGNMENT_COMPLIANCE.md`](docs/ASSIGNMENT_COMPLIANCE.md)** — requirement-by-requirement checklist and known gaps.
+**Requirements:** Python **3.12** (matches the Docker image). `git` and `curl` for the steps below.
 
-## Quickstart
+---
+
+## 1. Repository root and virtual environment
+
+From the project root (`SHL/`):
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
+```
+
+Activate the venv:
+
+- **Linux / macOS:** `source .venv/bin/activate`
+- **Windows (PowerShell):** `.\.venv\Scripts\Activate.ps1`
+- **Windows (cmd):** `.\.venv\Scripts\activate.bat`
+
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
-
-uvicorn app.main:app --reload --port 8000
 ```
 
-Health check:
+---
 
-```bash
-curl -s localhost:8000/health
-```
+## 2. Catalog JSON (required for real recommendations)
 
-Chat:
+The API **never** scrapes SHL at request time. It reads one local JSON file:
 
-```bash
-curl -s localhost:8000/chat \
-  -H 'content-type: application/json' \
-  -d '{"messages":[{"role":"user","content":"Hiring a Java developer, mid-level, needs stakeholder communication. Prefer <=30 minutes."}]}'
-```
+| Priority | How |
+|----------|-----|
+| 1 | If **`SHL_CATALOG_PATH`** is set, that file is used. |
+| 2 | Else **`data/shl_product_catalog.json`**, then **`data/catalog.json`**. |
 
-## Catalog data
-
-This service **never scrapes at runtime**. It loads a local catalog JSON file:
-
-- optional override: set **`SHL_CATALOG_PATH`** to an absolute path to one JSON file (used exclusively when set)
-- otherwise: `data/shl_product_catalog.json`, then `data/catalog.json`
-
-Example:
-
-```bash
-export SHL_CATALOG_PATH=/path/to/shl_product_catalog.json
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-To generate it, run:
+**Generate / refresh the catalog** — the scraper writes **`data/catalog.json`**:
 
 ```bash
 python scripts/scrape_shl_catalog.py
 ```
 
-If the scrape contains invalid JSON control characters, normalize offline (same repair as runtime):
+If you instead maintain **`data/shl_product_catalog.json`** (or any copy) and it contains invalid JSON control characters, normalize offline (same repair logic as runtime):
 
 ```bash
 python scripts/normalize_catalog.py --in data/shl_product_catalog.json --out data/shl_product_catalog.normalized.json
-export SHL_CATALOG_PATH="$PWD/data/shl_product_catalog.normalized.json"
+export SHL_CATALOG_PATH="$PWD/data/shl_product_catalog.normalized.json"   # Linux / macOS
+# PowerShell: $env:SHL_CATALOG_PATH = "$PWD\data\shl_product_catalog.normalized.json"
 ```
 
-Then restart the server.
+Restart the server after changing `SHL_CATALOG_PATH`.
 
-## Semantic retrieval (local embeddings)
+---
 
-After installing dependencies, build an index aligned with `load_catalog()` (same row order and filters):
+## 3. Run the API locally
+
+```bash
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+For a LAN or container-friendly bind:
+
+```bash
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+---
+
+## 4. Verify with `curl`
+
+Point **`BASE`** at your server (local or deployed):
+
+```bash
+export BASE=http://127.0.0.1:8000    # Linux / macOS
+# PowerShell: $env:BASE = "http://127.0.0.1:8000"
+```
+
+**Health** — expect `{"status":"ok"}`:
+
+```bash
+curl -sS "$BASE/health"
+```
+
+**Chat** — JSON body must include a non-empty `messages` array of `{ "role": "user"|"assistant", "content": "..." }`:
+
+```bash
+curl -sS "$BASE/chat" -H 'content-type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Personality assessment for executive leadership team, stakeholder communication, remote ok."}]}'
+```
+
+Successful responses match **`ChatResponse`**: `reply` (string), `recommendations` (array of `name`, `url`, `test_type`), `end_of_conversation` (boolean). To pretty-print if you have [jq](https://jqlang.org/) installed:
+
+```bash
+curl -sS "$BASE/chat" -H 'content-type: application/json' \
+  -d '{"messages":[{"role":"user","content":"Personality assessment for executive leadership team, stakeholder communication, remote ok."}]}' \
+  | jq .
+```
+
+**Note:** Invalid `/chat` bodies still return **HTTP 200** with the same JSON shape (empty `recommendations` and an explanatory `reply`) so automated evaluators always get a stable schema. See [`app/main.py`](app/main.py).
+
+---
+
+## 5. Semantic retrieval (optional, local embeddings)
+
+Hybrid ranking uses a precomputed embedding index aligned with `load_catalog()` (same row order and filters):
 
 ```bash
 python scripts/build_embedding_index.py
-# optional: EMBEDDING_INDEX_PATH=... python scripts/build_embedding_index.py --out /path/catalog_embeddings.npz
+# Optional custom output:
+# EMBEDDING_INDEX_PATH=/path/custom.npz python scripts/build_embedding_index.py --out /path/custom.npz
 ```
 
-At runtime, **recommend** / **refine** use **hybrid** scores (semantic cosine + lexical overlap). See [`app/config.py`](app/config.py) for `HYBRID_W_SEM`, `HYBRID_W_LEX`, and embedding paths.
+Tuning: **`HYBRID_W_SEM`**, **`HYBRID_W_LEX`**, and embedding paths in [`app/config.py`](app/config.py).
 
-## LLM hints (optional): Groq or Gemini
+---
 
-Structured **JSON only** (skills, retrieval phrasing, test-type hints) — **never** catalog URLs. On failure or when disabled, the service falls back to rule-based `NeedState` only.
+## 6. LLM hints (optional): Groq or Gemini
 
-- **Groq** (recommended when Google quota is tight): set `GROQ_API_KEY` in `.env` or Render env. Uses the OpenAI-compatible Chat Completions API (`GROQ_MODEL` default `llama-3.3-70b-versatile`). If `GROQ_API_KEY` is set, **Groq is tried first**; then Gemini if still no hints and Gemini is enabled.
-- **Gemini**: set `GEMINI_API_KEY`; disable with `USE_GEMINI=false`.
+Structured **JSON-only** hints (skills, retrieval phrasing, test types) — **never** catalog URLs. On failure or when disabled, the service uses rule-based `NeedState` only.
 
-Never commit real keys; rotate any key pasted into chat or logs.
+- **Groq:** set **`GROQ_API_KEY`** (e.g. in `.env`). Uses OpenAI-compatible Chat Completions (`GROQ_MODEL`, default `llama-3.3-70b-versatile`). If Groq is configured, it is **tried first**; Gemini may still run if hints are missing and Gemini is enabled.
+- **Gemini:** set **`GEMINI_API_KEY`**; disable with **`USE_GEMINI=false`**.
 
-## Docker
+Do not commit real API keys.
 
-The image installs **`requirements-prod.txt`** (no pytest). For local development and CI, use **`requirements.txt`**.
+---
 
-Build and run locally (catalog must exist under `data/` at build time, or mount a file and set `SHL_CATALOG_PATH`):
+## 7. Docker
+
+The image installs **`requirements-prod.txt`** (no pytest). For development and CI, use **`requirements.txt`**.
+
+Build and run (catalog must exist in the image or be mounted; set **`SHL_CATALOG_PATH`** when mounting a host file):
 
 ```bash
 docker build -t shl-recommender .
@@ -92,13 +142,15 @@ docker run --rm -p 8000:8000 \
   shl-recommender
 ```
 
-Platforms like **Render / Fly.io / Railway** inject **`PORT`**; the image listens on **`${PORT:-8000}`**. Set **`SHL_CATALOG_PATH`** in the dashboard if the catalog is not baked into the image.
+On **Render / Fly.io / Railway**, the container listens on **`${PORT:-8000}`**. Set **`SHL_CATALOG_PATH`** in the dashboard if the catalog is not baked into the image.
 
 This repo includes **`render.yaml`** as a starting point for [Render Blueprints](https://render.com/docs/blueprint-spec).
 
-**Render / slow `/chat`:** The first load of **sentence-transformers** + `.npz` index can take tens of seconds on a **512 MB** instance. The app **warms up embeddings at startup** (so `/chat` does not pay that cost alone). If you still see timeout replies, set **`CHAT_PROCESSING_TIMEOUT_S`** (e.g. `55` in `render.yaml`) and/or upgrade instance RAM. Strict evaluators can keep **`29`** locally.
+**Slow `/chat` on small instances:** The first load of **sentence-transformers** and the `.npz` index can take a long time on low RAM. The app **warms up embeddings at startup**. If you still hit timeouts, raise **`CHAT_PROCESSING_TIMEOUT_S`** (e.g. `55` in `render.yaml`) and/or increase instance memory. Local strict evaluators may keep **`29`** seconds—see [`app/config.py`](app/config.py).
 
-## Tests
+---
+
+## 8. Tests
 
 ```bash
 pip install -r requirements.txt
